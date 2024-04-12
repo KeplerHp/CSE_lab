@@ -13,6 +13,9 @@
 
 #include "./inode.h"
 #include "block/allocator.h"
+#include "distributed/commit_log.h"
+#include <map>
+#include <shared_mutex>
 
 namespace chfs {
 
@@ -30,14 +33,22 @@ class FileOperation;
  * N  ...         |
  * | Super block | Inode Table   | Inode allocation bitmap |
  * Block allocation bitmap ... |  Other data blocks   |
+ * 
+ * The inode manager is also not thread-safe. You should implement it to be 
+ * thread-safe in lab2.
  */
 class InodeManager {
   friend class FileOperation;
+  friend class LogTransformer;
   // We will modify the block manager
   std::shared_ptr<BlockManager> bm;
   u64 max_inode_supported;
   u64 n_table_blocks;
   u64 n_bitmap_blocks;
+  // Concurrent related
+  std::shared_ptr<std::shared_mutex> inode_bitmap_lock;
+  std::map<block_id_t, std::shared_ptr<std::shared_mutex>> inode_table_locks;
+  bool is_log_enabled;
 
 public:
   /**
@@ -112,6 +123,11 @@ public:
     return 1 + n_table_blocks + n_bitmap_blocks;
   }
 
+  auto set_log_enabled(bool enabled) -> ChfsNullResult {
+    is_log_enabled = enabled;
+    return KNullOk;
+  }
+
   // helper functions
 
   /**
@@ -127,7 +143,11 @@ private:
   InodeManager(std::shared_ptr<BlockManager> bm, u64 max_inode_supported,
                u64 ntables, u64 nbit)
       : bm(bm), max_inode_supported(max_inode_supported),
-        n_table_blocks(ntables), n_bitmap_blocks(nbit) {}
+        n_table_blocks(ntables), n_bitmap_blocks(nbit), is_log_enabled(false) {
+          inode_bitmap_lock = std::make_shared<std::shared_mutex>();
+          for (u64 i = 0; i < ntables; ++i)
+            inode_table_locks.insert({i + 1, std::make_shared<std::shared_mutex>()});
+        }
 
   /**
    * Read the inode to a buffer

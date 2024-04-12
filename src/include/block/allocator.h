@@ -14,6 +14,7 @@
 #include <memory>
 
 #include "block/manager.h"
+#include <shared_mutex>
 
 namespace chfs {
 
@@ -23,19 +24,18 @@ class InodeManager;
 /**
  * BlockManager implements a block allocator to manage blocks of the manager
  * It internally uses bitmap for the management.
- * Note that the block allocator is **not** thread-safe. In lab2, you should make
- * it thread-safe.
+ * Note that the block allocator is **not** thread-safe in lab1.
+ * In lab2, you need to make it thread-safe.
  *
- * # Example
- *
- * TBD
  */
 class BlockAllocator {
   friend class SuperBlock;
   friend class nodeManager;
+  friend class LogTransformer;
 
 public:
   std::shared_ptr<BlockManager> bm;
+  std::shared_ptr<std::shared_mutex> bitmap_lock;
 
 protected:
   // The bitmap block is stored at [bitmap_block_id, bitmap_block_id +
@@ -45,6 +45,7 @@ protected:
 
   // number of bits needed in the last bitmap block
   usize last_block_num;
+  bool is_log_enabled;
 
 public:
   /**
@@ -95,6 +96,14 @@ public:
    *         other error code if there is other error.
    */
   auto deallocate(block_id_t block_id) -> ChfsNullResult;
+
+  /**
+   * Set the blockallocator as log enabled
+   */
+  auto set_log_enabled() -> ChfsNullResult {
+    this->is_log_enabled = true;
+    return KNullOk;
+  }
 };
 
 } // namespace chfs

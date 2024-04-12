@@ -16,8 +16,7 @@
 #include "librpc/client.h"
 #include "librpc/server.h"
 #include "metadata/manager.h"
-#include "filesystem/operations.h"
-#include "distributed/commit_log.h"
+#include <shared_mutex>
 
 namespace chfs {
 
@@ -164,8 +163,6 @@ public:
    * A RPC handler for client. It returns the type and attribute of a file
    *
    * @param id: The inode id of the file
-   * 
-   * @return: a tuple of <size, atime, mtime, ctime, type>
    */
   auto get_type_attr(inode_id_t id) -> std::tuple<u64, u64, u64, u64, u8>;
 
@@ -188,6 +185,27 @@ public:
    * @return: False if the server has already been launched.
    */
   auto run() -> bool;
+
+  /**
+   * Returns the File operation of the metadata server.
+   *
+   * It's only used in `gtest` since we need to check whether
+   * the log module works well or not.
+   */
+  auto get_operation() -> std::shared_ptr<FileOperation>;
+
+  /**
+   * Returns the Block manager of the metadata server.
+   *
+   * It's only used in `gtest` since we need to check whether
+   * the log module works well or not.
+   */
+  auto get_block_manager() -> std::shared_ptr<BlockManager>;
+
+  auto get_inode_locks()
+      -> std::map<inode_id_t, std::shared_ptr<std::shared_mutex>> {
+    return inode_locks;
+  }
 
   /**
    * Recover the system from log
@@ -235,16 +253,21 @@ private:
   bool running;
   // Control which data server node allocates the new block
   RandomNumberGenerator generator;
+  /**
+   * Currently we support inode level lock for concurrency.
+   * Notice that we use an `on-demand` way to allocate locks,
+   * which means once some metadata operation are performed,
+   * it will check whether the inode has a lock. If not, it will
+   * allocate one into this map.
+   */
+  std::map<inode_id_t, std::shared_ptr<std::shared_mutex>> inode_locks;
 
   // Log related
-  [[maybe_unused]] std::shared_ptr<chfs::CommitLog> commit_log;
+  std::shared_ptr<chfs::CommitLog> commit_log;
+  std::shared_ptr<chfs::LogTransformer> log_transformer;
   bool is_log_enabled_;
   bool may_failed_;
   [[maybe_unused]] bool is_checkpoint_enabled_;
-
-  /**
-   * {You can add anything you want here}
-   */
 };
 
 } // namespace chfs
