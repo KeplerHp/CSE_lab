@@ -31,11 +31,13 @@ class BlockManager {
 
 protected:
   const usize block_sz = 4096;
+  const usize default_log_block_cnt = 1024;
 
   std::string file_name_;
   int fd;
   u8 *block_data;
   usize block_cnt;
+  usize log_block_cnt;
   bool in_memory; // whether we use in-memory to emulate the block manager
   bool maybe_failed;
   usize write_fail_cnt;

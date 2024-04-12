@@ -1,7 +1,7 @@
 add_library(
   chfs_block
   OBJECT
-  manager.cc
+  # manager.cc
   allocator.cc
 )
 

@@ -4,10 +4,13 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <tuple>
 
 #include "block/manager.h"
 
 namespace chfs {
+extern std::mutex mtx_tx;
+extern std::vector<std::tuple<block_id_t, std::vector<u8>, bool>> record;
 
 auto get_file_sz(std::string &file_name) -> usize {
   std::filesystem::path path = file_name;
@@ -80,22 +83,57 @@ BlockManager::BlockManager(const std::string &file, usize block_cnt, bool is_log
     : file_name_(file), block_cnt(block_cnt), in_memory(false) {
   this->write_fail_cnt = 0;
   this->maybe_failed = false;
+  this->log_enabled = is_log_enabled;
   // TODO: Implement this function.
-  UNIMPLEMENTED();    
+  // UNIMPLEMENTED();
+  this->fd = open(file.c_str(), O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);    
+  CHFS_ASSERT(this->fd != -1, "Failed to open the block manager file");
+
+  auto file_sz = get_file_sz(this->file_name_);
+  if (file_sz == 0) {
+    initialize_file(this->fd, this->total_storage_sz());
+  } else {
+    this->block_cnt = file_sz / this->block_sz;
+    CHFS_ASSERT(this->total_storage_sz() == KDefaultBlockCnt * this->block_sz,
+                "The file size mismatches");
+  }
+
+  this->block_data = 
+      static_cast<u8 *>(mmap(nullptr, this->total_storage_sz(),
+                             PROT_READ | PROT_WRITE, MAP_SHARED, this->fd, 0));
+  CHFS_ASSERT(this->block_data != MAP_FAILED, "Failed to mmap the data");
+
+  if (is_log_enabled) {
+    this->block_cnt = block_cnt - 1024;
+  }
 }
 
 auto BlockManager::write_block(block_id_t block_id, const u8 *data)
     -> ChfsNullResult {
+  if (this->log_enabled) {
+    mtx_tx.lock();
+    if (this->maybe_failed && write_fail_cnt >= 3 && block_id < this->block_cnt)
+      record.emplace_back(std::tuple<block_id_t, std::vector<u8>, bool>(block_id, std::vector<u8>(data, data + block_sz), true));
+    else
+      record.emplace_back(std::tuple<block_id_t, std::vector<u8>, bool>(block_id, std::vector<u8>(data, data + block_sz), false));
+    // std::cout << "log here" << std::endl;
+
+    mtx_tx.unlock();
+  }
+
   if (this->maybe_failed && block_id < this->block_cnt) {
     if (this->write_fail_cnt >= 3) {
       this->write_fail_cnt = 0;
       return ErrorType::INVALID;
     }
   }
-  
 
   // TODO: Implement this function.
-  UNIMPLEMENTED();
+  // UNIMPLEMENTED();
+
+  if (block_id < 0 || block_id >= block_cnt || data == nullptr)
+    return ErrorType::INVALID;
+  memcpy(&block_data[block_sz * block_id], data, block_sz);
   this->write_fail_cnt++;
   return KNullOk;
 }
@@ -111,7 +149,12 @@ auto BlockManager::write_partial_block(block_id_t block_id, const u8 *data,
   }
 
   // TODO: Implement this function.
-  UNIMPLEMENTED();
+  // UNIMPLEMENTED();
+  if (block_id < 0 || block_id >= block_cnt || data == nullptr)
+    return ErrorType::INVALID;
+  if (offset < 0 || offset >= block_sz)
+    return ErrorType::INVALID;
+  memcpy(&block_data[block_sz * block_id + offset], data, std::min(len, block_sz - offset));
   this->write_fail_cnt++;
   return KNullOk;
 }
@@ -119,7 +162,13 @@ auto BlockManager::write_partial_block(block_id_t block_id, const u8 *data,
 auto BlockManager::read_block(block_id_t block_id, u8 *data) -> ChfsNullResult {
 
   // TODO: Implement this function.
-  UNIMPLEMENTED();
+  // UNIMPLEMENTED();
+
+  if(block_id <  0 || block_id >= block_cnt)
+    return ErrorType::INVALID;
+  // std::cout << block_data[0] << std::endl;
+  // std::cout << "start: " << block_sz * block_id << std::endl;
+  memcpy(data, &block_data[block_sz * block_id], block_sz);
 
   return KNullOk;
 }
@@ -127,7 +176,11 @@ auto BlockManager::read_block(block_id_t block_id, u8 *data) -> ChfsNullResult {
 auto BlockManager::zero_block(block_id_t block_id) -> ChfsNullResult {
   
   // TODO: Implement this function.
-  UNIMPLEMENTED();
+  // UNIMPLEMENTED();
+  
+  if(block_id < 0 || block_id >= block_sz)
+    return ErrorType::INVALID;
+  memset(&block_data[block_sz * block_id], 0, block_sz);
 
   return KNullOk;
 }
@@ -202,5 +255,6 @@ auto BlockIterator::next(usize offset) -> ChfsNullResult {
   }
   return KNullOk;
 }
+
 
 } // namespace chfs
