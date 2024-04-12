@@ -1,4 +1,4 @@
-//===----------------------------------------------------------------------===//
+ //===----------------------------------------------------------------------===//
 //
 //                         Chfs
 //
@@ -31,11 +31,13 @@ class BlockManager {
 
 protected:
   const usize block_sz = 4096;
+  const usize default_log_block_cnt = 1024;
 
   std::string file_name_;
   int fd;
   u8 *block_data;
   usize block_cnt;
+  usize log_block_cnt;
   bool in_memory; // whether we use in-memory to emulate the block manager
   bool maybe_failed;
   usize write_fail_cnt;
@@ -75,6 +77,7 @@ public:
    * @param is_log_enabled whether to enable log
    */
   BlockManager(const std::string &file, usize block_cnt, bool is_log_enabled);
+  
 
   virtual ~BlockManager();
 
@@ -137,6 +140,25 @@ public:
   auto flush() -> ChfsNullResult;
 
   /**
+   * return the first block index of log area
+   */
+  auto log_start_block() const -> block_id_t {
+    return this->block_cnt;
+  }
+
+  /**
+   * Clean all log area 
+   */
+  auto clean_log_area() -> ChfsNullResult {
+    for (block_id_t i = this->block_cnt; i < this->block_cnt + this->log_block_cnt; i++) {
+      this->zero_block(i).unwrap();
+      sync(i).unwrap();
+    }
+
+    return KNullOk;
+  }
+
+  /**
    * Mark the block manager as may fail state
    */
   auto set_may_fail(bool may_fail) -> void {
@@ -151,6 +173,8 @@ public:
  * each block read/write may return error due to failed reading/writing blocks.
  */
 class BlockIterator {
+  friend class LogTransformer;
+
   BlockManager *bm;
   u64 cur_block_off;
   block_id_t start_block_id;

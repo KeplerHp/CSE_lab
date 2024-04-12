@@ -20,13 +20,16 @@ namespace chfs {
  * Implement the basic inode filesystem
  */
 class FileOperation {
+  friend class LogTransformer;
   friend class MetadataServer;
+
 protected:
   // Feel free to remove them if you don't want to implement the inode-based
   // filesystem
   [[maybe_unused]] std::shared_ptr<BlockManager> block_manager_;
   [[maybe_unused]] std::shared_ptr<InodeManager> inode_manager_;
   [[maybe_unused]] std::shared_ptr<BlockAllocator> block_allocator_;
+  bool is_log_enabled;
 
 public:
   /**
@@ -186,11 +189,19 @@ public:
    */
   auto unlink(inode_id_t parent, const char *name) -> ChfsNullResult;
 
+  /**
+   * Set log enabled
+   */
+  auto set_log_enabled(bool enabled) -> ChfsNullResult {
+    is_log_enabled = enabled;
+    return KNullOk;
+  }
+
 private:
   FileOperation(std::shared_ptr<BlockManager> bm,
                 std::shared_ptr<InodeManager> im,
                 std::shared_ptr<BlockAllocator> ba)
-      : block_manager_(bm), inode_manager_(im), block_allocator_(ba) {}
+      : block_manager_(bm), inode_manager_(im), block_allocator_(ba), is_log_enabled(false) {}
 };
 
 } // namespace chfs

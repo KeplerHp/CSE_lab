@@ -41,6 +41,47 @@ public:
 };
 
 /**
+ * `LogTransformer` is an abstract class that transform a metadata
+ * operation into a list of block edits. It's used to record the
+ * block edits into the commit log.
+ */
+class LogTransformer {
+public:
+  explicit LogTransformer(
+      std::map<inode_id_t, std::shared_ptr<std::shared_mutex>> inode_locks,
+      std::shared_ptr<FileOperation> op);
+
+  auto transform_mknode(u8 type, inode_id_t parent, const std::string &name)
+      -> std::pair<txn_id_t, std::vector<std::shared_ptr<BlockOperation>>>;
+
+  auto transform_unlink(inode_id_t parent, const std::string &name)
+      -> std::pair<txn_id_t, std::vector<std::shared_ptr<BlockOperation>>>;
+
+private:
+  auto transform_free_inode(inode_id_t id)
+      -> std::vector<std::shared_ptr<BlockOperation>>;
+
+  auto transform_free_block(block_id_t id) -> std::shared_ptr<BlockOperation>;
+
+  auto transform_write_file(inode_id_t id, const std::vector<u8> &data)
+      -> std::vector<std::shared_ptr<BlockOperation>>;
+
+  auto transform_alloc_inode(u8 type)
+      -> std::pair<inode_id_t, std::vector<std::shared_ptr<BlockOperation>>>;
+
+  auto transform_alloc_block()
+      -> std::pair<block_id_t, std::shared_ptr<BlockOperation>>;
+
+  std::shared_ptr<FileOperation> operation_;
+  std::atomic<txn_id_t> current_txn_id_;
+  // Concurrent related
+  std::shared_ptr<std::shared_mutex> inode_bitmap_lock;
+  std::map<block_id_t, std::shared_ptr<std::shared_mutex>> inode_table_locks;
+  std::shared_ptr<std::shared_mutex> bitmap_lock;
+  std::map<inode_id_t, std::shared_ptr<std::shared_mutex>> inode_locks;
+};
+
+/**
  * `CommitLog` is a class that records the block edits into the
  * commit log. It's used to redo the operation when the system
  * is crashed.
@@ -57,11 +98,15 @@ public:
   auto recover() -> void;
   auto get_log_entry_num() -> usize;
 
-  bool is_checkpoint_enabled_;
+private:
+  auto append_log_inner(std::vector<std::shared_ptr<BlockOperation>> ops)
+      -> void;
+  std::mutex mutex_;         // Protect persist log
+  usize log_cnt;             // When to trigger checkpoint
+  block_id_t last_block_id_; // where to write next log
+  block_id_t log_block_start_index_;
+  [[maybe_unused]] bool is_checkpoint_enabled_;
   std::shared_ptr<BlockManager> bm_;
-  /**
-   * {Append anything if you need}
-   */
 };
 
 } // namespace chfs
