@@ -21,7 +21,9 @@
 #include <memory>
 #include <mutex>
 #include <unordered_set>
+#include <unordered_map>
 #include <vector>
+#include <list>
 
 namespace chfs {
 /**
@@ -52,13 +54,17 @@ public:
   ~CommitLog();
   auto append_log(txn_id_t txn_id,
                   std::vector<std::shared_ptr<BlockOperation>> ops) -> void;
-  auto commit_log(txn_id_t txn_id) -> void;
+  auto commit_log(txn_id_t txn_id, bool) -> void;
   auto checkpoint() -> void;
   auto recover() -> void;
   auto get_log_entry_num() -> usize;
 
   bool is_checkpoint_enabled_;
   std::shared_ptr<BlockManager> bm_;
+  std::atomic<txn_id_t> txn_id = 0;
+  std::unordered_set<block_id_t> used_blocks;
+  std::unordered_map<txn_id_t, std::vector<std::pair<block_id_t, block_id_t>>> op_maps;
+  std::list<txn_id_t> tx_list;
   /**
    * {Append anything if you need}
    */

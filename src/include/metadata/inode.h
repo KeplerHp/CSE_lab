@@ -56,6 +56,8 @@ public:
     ctime = t;
   }
 
+  auto set_size(u64 new_size) { size = new_size; }
+
 } __attribute__((packed));
 
 static_assert(sizeof(FileAttr) == 32, "Unexpected FileAttr size");
@@ -114,10 +116,18 @@ public:
    */
   auto get_attr() const -> FileAttr { return inner_attr; }
 
+  auto set_all_time(u64 time) {
+    inner_attr.set_all_time(time);
+  }
+
   /**
    * Get the file size
    */
   auto get_size() const -> u64 { return inner_attr.size; }
+
+  auto set_size(u64 new_size) {
+    inner_attr.set_size(new_size);
+  }
 
   /**
    * Get the number of blocks of the inode
@@ -142,7 +152,7 @@ public:
     const auto max_blocks_in_block = block_size / sizeof(block_id_t);
     return static_cast<u64>(max_blocks_in_block) *
                static_cast<u64>(block_size) +
-           static_cast<u64>(this->get_nblocks() - 1) *
+           static_cast<u64>(nblocks - 1) *
                static_cast<u64>(block_size);
   }
 

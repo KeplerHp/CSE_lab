@@ -12,6 +12,7 @@
 #pragma once
 
 #include <vector>
+#include <mutex>
 
 #include "common/config.h"
 #include "common/macros.h"
@@ -38,6 +39,7 @@ protected:
   usize block_cnt;
   bool in_memory; // whether we use in-memory to emulate the block manager
   bool maybe_failed;
+  bool log_enabled = false;
   usize write_fail_cnt;
 
 public:
