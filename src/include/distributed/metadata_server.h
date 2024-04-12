@@ -16,7 +16,11 @@
 #include "librpc/client.h"
 #include "librpc/server.h"
 #include "metadata/manager.h"
-#include <shared_mutex>
+#include "filesystem/operations.h"
+#include "distributed/commit_log.h"
+#include <unordered_map>
+#include <vector>
+#include <mutex>
 
 namespace chfs {
 
@@ -53,6 +57,7 @@ namespace chfs {
  */
 const u8 RegularFileType = 1;
 const u8 DirectoryType = 2;
+class InodeMutex;
 
 using BlockInfo = std::tuple<block_id_t, mac_id_t, version_t>;
 
@@ -163,6 +168,8 @@ public:
    * A RPC handler for client. It returns the type and attribute of a file
    *
    * @param id: The inode id of the file
+   * 
+   * @return: a tuple of <size, atime, mtime, ctime, type>
    */
   auto get_type_attr(inode_id_t id) -> std::tuple<u64, u64, u64, u64, u8>;
 
@@ -185,27 +192,6 @@ public:
    * @return: False if the server has already been launched.
    */
   auto run() -> bool;
-
-  /**
-   * Returns the File operation of the metadata server.
-   *
-   * It's only used in `gtest` since we need to check whether
-   * the log module works well or not.
-   */
-  auto get_operation() -> std::shared_ptr<FileOperation>;
-
-  /**
-   * Returns the Block manager of the metadata server.
-   *
-   * It's only used in `gtest` since we need to check whether
-   * the log module works well or not.
-   */
-  auto get_block_manager() -> std::shared_ptr<BlockManager>;
-
-  auto get_inode_locks()
-      -> std::map<inode_id_t, std::shared_ptr<std::shared_mutex>> {
-    return inode_locks;
-  }
 
   /**
    * Recover the system from log
@@ -253,21 +239,92 @@ private:
   bool running;
   // Control which data server node allocates the new block
   RandomNumberGenerator generator;
-  /**
-   * Currently we support inode level lock for concurrency.
-   * Notice that we use an `on-demand` way to allocate locks,
-   * which means once some metadata operation are performed,
-   * it will check whether the inode has a lock. If not, it will
-   * allocate one into this map.
-   */
-  std::map<inode_id_t, std::shared_ptr<std::shared_mutex>> inode_locks;
 
   // Log related
-  std::shared_ptr<chfs::CommitLog> commit_log;
-  std::shared_ptr<chfs::LogTransformer> log_transformer;
+  [[maybe_unused]] std::shared_ptr<chfs::CommitLog> commit_log;
   bool is_log_enabled_;
   bool may_failed_;
   [[maybe_unused]] bool is_checkpoint_enabled_;
+
+  /**
+   * {You can add anything you want here}
+   */
+  std::shared_ptr<InodeMutex> mutex_;
+};
+
+class InodeMutex {
+
+public:
+  std::unordered_map<inode_id_t, std::mutex *> lock_map;
+  std::unordered_map<mac_id_t, std::mutex*> lock_mac;
+  std::mutex *mute_all;
+
+  InodeMutex(usize total_inode_num) {
+    for (u32 i = 1; i < total_inode_num + 1; i++) {
+      auto m = new std::mutex();
+      this->lock_map[i] = m;
+    }
+    this->mute_all = new std::mutex();
+  }
+
+  auto insert_mac(mac_id_t id) {
+    auto m = new std::mutex();
+    this->lock_mac[id] = m;
+  }
+
+  auto lock_mach(mac_id_t mac) {
+    auto m = this->lock_mac[mac];
+    if (m == nullptr) {
+      m = new std::mutex();
+      this->lock_mac[mac] = m;
+    }
+    m->lock();
+  }
+
+  auto release_mac(mac_id_t mac) {
+    auto m = this->lock_mac[mac];
+    if (m != nullptr) {
+      m->unlock();
+    }
+  }
+
+  auto lock_inode(inode_id_t i) {
+    auto m = this->lock_map[i];
+    if (m == nullptr) {
+      m = new std::mutex();
+      this->lock_map[i] = m;
+    }
+    m->lock();
+    // std::cout << "locked: " << i << std::endl;
+  }
+
+  auto release_inode(inode_id_t i) {
+    auto m = this->lock_map[i];
+    if (m != nullptr) {
+      m->unlock();
+    }
+    // std::cout << "unlocked: " << std::endl;
+  }
+
+  auto lock_all() {
+    this->mute_all->lock();
+  }
+
+  auto release_all() {
+    this->mute_all->unlock();
+  }
+
+  ~InodeMutex() {
+    for (auto item : lock_map) {
+      delete item.second;
+    }
+    for (auto item : lock_mac) {
+      delete item.second;
+    }
+    this->lock_map.clear();
+    this->lock_mac.clear();
+    delete this->mute_all;
+  }
 };
 
 } // namespace chfs

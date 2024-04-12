@@ -41,17 +41,6 @@ enum class ErrorType {
    */
   /* The operation is not permitted */
   NotPermitted = 9,
-  
-  /**
-   * Raft Failures
-   */
-
-  /* Cluster has no leader or cannot make agreement*/
-  NoLeader = 20,
-
-  /* Cluster already has a leader */
-  HasLeader = 21,
-
 };
 
 } // namespace chfs

@@ -546,6 +546,7 @@ void chfs_lookup(fuse_req_t req, fuse_ino_t parent, const char *name) {
   e.attr_timeout = 0.0;
   e.entry_timeout = 0.0;
   e.generation = 0;
+  std::cout << "here: " << name << std::endl;
 
   // lookup
   auto lookup_res = fs->lookup(parent, name);

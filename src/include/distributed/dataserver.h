@@ -116,15 +116,13 @@ public:
    */
   auto free_block(block_id_t block_id) -> bool;
 
-private:
-  /**
-   * Helper function to check whether a block is valid or not
-   */
-  inline auto is_block_valid(block_id_t block_id, version_t version) -> bool;
+  auto get_blk_version(block_id_t block_id) -> version_t;
 
+  auto update_blk_version(block_id_t block_id) -> version_t;
+
+private:
   std::unique_ptr<RpcServer> server_;
   std::shared_ptr<BlockAllocator> block_allocator_;
-  std::shared_ptr<std::mutex> block_mutex_;
 };
 
 } // namespace chfs
